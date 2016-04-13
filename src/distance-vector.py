@@ -24,6 +24,17 @@ class RoutingTable(object):
 
         return output_table
 
+    def get_forwarding_table_entries(self):
+        # format: {destination_address: link}
+        output_table = dict()
+
+        for destination_address, entry in self.routing_table.iteritems():
+            forward_link = entry[1]
+            if forward_link is not None:
+                output_table[destination_address] = forward_link
+
+        return output_table
+
     def check_link_to_self(self, this_node, destination_hostname):
         this_address = this_node.get_address(destination_hostname)
         updated = False
@@ -41,6 +52,7 @@ class RoutingTable(object):
 
     def refresh_routing_table(self, this_node):
         updated_routing_table = False
+        self.clear_routing_table()
 
         for hostname, destinations in self.neighbor_routing_tables.iteritems():
             for destination_address, cost in destinations.iteritems():
@@ -51,6 +63,23 @@ class RoutingTable(object):
 
         return updated_routing_table
 
+    def clear_routing_table(self):
+        entries_to_remove = []
+
+        for destination_address, data in self.routing_table.iteritems():
+            link = data[1]
+            if link is not None:
+                entries_to_remove.append(destination_address)
+
+        for entry in entries_to_remove:
+            del self.routing_table[entry]
+
+        # print "Remaining routing_table items: %s" % self.routing_table
+
+    def remove_neighbor_routing_table(self, hostname):
+        if self.neighbor_routing_tables.get(hostname):
+            self.neighbor_routing_tables.pop(hostname)
+
 class DistanceVectorApp(object):
     def __init__(self, node):
         # the format used for the routing table is {address: cost}
@@ -59,18 +88,55 @@ class DistanceVectorApp(object):
         self.source_address = None
         self.broadcast_count = 0
 
+        # format: {neighbor_hostname: last_contact_timestamp}
+        self.last_contact_list = dict()
+
+    def rebuild_forwarding_table(self):
+        self.node.clear_forwarding_table()
+        entries = self.routing_table.get_forwarding_table_entries()
+
+        for destination_address, destination_link in entries.iteritems():
+            self.node.add_forwarding_entry(destination_address,destination_link)
+
+    def check_disabled_nodes(self, hostname):
+        # print "(%s) Updating last_contact: %s" % (self.node.hostname, hostname)
+        current_time = Sim.scheduler.current_time()
+        self.last_contact_list[hostname] = current_time
+        removed_hostnames = []
+
+        # print"(%s) last_contact list: %s" % (self.node.hostname, self.last_contact_list)
+
+        for hostname, last_contacted in self.last_contact_list.iteritems():
+            if current_time - last_contacted >= 90:
+                # print "(%s) Removing neighbor hostname: %s" % (self.node.hostname, hostname)
+                # print "Neighbor Routing Tables: %s" % self.routing_table.neighbor_routing_tables
+                self.routing_table.remove_neighbor_routing_table(hostname)
+                removed_hostnames.append(hostname)
+
+        for neighbor_hostname in removed_hostnames:
+            self.last_contact_list.pop(neighbor_hostname)
+            print "Removing last_contact_list entry: %s" % neighbor_hostname
+
+        if len(removed_hostnames) > 0:
+            self.routing_table.refresh_routing_table(self.node)
+            return True
+
+        return False
+
     def receive_packet(self,received_packet):
         # print Sim.scheduler.current_time(), self.node.hostname, received_packet.ident, received_packet.body
         hostname = received_packet.body['hostname']
         neighbor_routing_table = received_packet.body['routing_table']
+        node_status_updated = self.check_disabled_nodes(hostname)
 
         self.source_address, updated_self_link = self.routing_table.check_link_to_self(self.node, hostname)
         self.routing_table.upsert_neighbor_routing_table(hostname, neighbor_routing_table)
         updated_routing_table = self.routing_table.refresh_routing_table(self.node)
 
-        if updated_routing_table or updated_self_link:
-            print ("%d, %s, Updated Routing Table Values:" + str(self.routing_table.get_routing_table())) % (Sim.scheduler.current_time(), self.node.hostname)
+        if updated_routing_table or updated_self_link or node_status_updated:
+            # print ("%d, %s, Updated Routing Table Values:" + str(self.routing_table.get_routing_table())) % (Sim.scheduler.current_time(), self.node.hostname)
             # print "%s neighbor routing tables: %s" % (self.node.hostname, self.routing_table.neighbor_routing_tables)
+            self.rebuild_forwarding_table()
 
     def broadcast_routing_table(self, event):
         routing_table = self.routing_table.get_routing_table()
@@ -84,10 +150,18 @@ class DistanceVectorApp(object):
         Sim.scheduler.add(delay=0, event=routing_table_packet, handler=self.node.send_packet)
 
         if self.broadcast_count < 100:
+            if self.broadcast_count == 50 and self.node.hostname == 'n1':
+                Sim.scheduler.add(delay=0, event=None, handler=n1.get_link('n2').down)
+                Sim.scheduler.add(delay=0, event=None, handler=n2.get_link('n1').down)
+                print "(%s) ----> DISABLED LINKS <----" % Sim.scheduler.current_time()
             Sim.scheduler.add(delay=30, event="", handler=self.broadcast_routing_table)
             self.broadcast_count += 1
         else:
-            print "--------> ENDING <--------"
+            print "(%s) --------> ENDING <--------" % Sim.scheduler.current_time()
+
+class NodePrinter(object):
+    def receive_packet(self, packet):
+        print packet
 
 if __name__ == '__main__':
     # parameters
@@ -95,7 +169,7 @@ if __name__ == '__main__':
     Sim.set_debug(True)
 
     # setup network
-    net = Network('../networks/five-nodes.txt')
+    net = Network('../networks/five-ring-nodes.txt')
 
     # get nodes
     n1 = net.get_node('n1')
@@ -161,6 +235,8 @@ if __name__ == '__main__':
     # d13.broadcast_routing_table("")
     # d14.broadcast_routing_table("")
     # d15.broadcast_routing_table("")
+
+    p = packet.Packet()
 
     # run the simulation
     Sim.scheduler.run()

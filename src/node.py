@@ -46,6 +46,9 @@ class Node(object):
 
     ## Forwarding table ##
 
+    def clear_forwarding_table(self):
+        self.forwarding_table.clear()
+
     def add_forwarding_entry(self,address,link):
         self.forwarding_table[address] = link
 
