@@ -104,18 +104,16 @@ class DistanceVectorApp(object):
         self.last_contact_list[hostname] = current_time
         removed_hostnames = []
 
-        # print"(%s) last_contact list: %s" % (self.node.hostname, self.last_contact_list)
+        # print "(%s) last_contact list: %s" % (self.node.hostname, self.last_contact_list)
 
         for hostname, last_contacted in self.last_contact_list.iteritems():
             if current_time - last_contacted >= 90:
-                # print "(%s) Removing neighbor hostname: %s" % (self.node.hostname, hostname)
-                # print "Neighbor Routing Tables: %s" % self.routing_table.neighbor_routing_tables
                 self.routing_table.remove_neighbor_routing_table(hostname)
                 removed_hostnames.append(hostname)
 
         for neighbor_hostname in removed_hostnames:
             self.last_contact_list.pop(neighbor_hostname)
-            print "Removing last_contact_list entry: %s" % neighbor_hostname
+            print "%s - Removing last_contact_list entry: %s" % (Sim.scheduler.current_time(), neighbor_hostname)
 
         if len(removed_hostnames) > 0:
             self.routing_table.refresh_routing_table(self.node)
@@ -134,7 +132,7 @@ class DistanceVectorApp(object):
         updated_routing_table = self.routing_table.refresh_routing_table(self.node)
 
         if updated_routing_table or updated_self_link or node_status_updated:
-            # print ("%d, %s, Updated Routing Table Values:" + str(self.routing_table.get_routing_table())) % (Sim.scheduler.current_time(), self.node.hostname)
+            # print ("%d, %s, Updated Routing Table Values:\n" + str(self.routing_table.get_routing_table())) % (Sim.scheduler.current_time(), self.node.hostname)
             # print "%s neighbor routing tables: %s" % (self.node.hostname, self.routing_table.neighbor_routing_tables)
             self.rebuild_forwarding_table()
 
@@ -149,19 +147,28 @@ class DistanceVectorApp(object):
         routing_table_packet = packet.Packet(destination_address=0, ident=0, ttl=1, protocol='dvrouting', body=data_dictionary)
         Sim.scheduler.add(delay=0, event=routing_table_packet, handler=self.node.send_packet)
 
-        if self.broadcast_count < 100:
-            if self.broadcast_count == 50 and self.node.hostname == 'n1':
-                Sim.scheduler.add(delay=0, event=None, handler=n1.get_link('n2').down)
-                Sim.scheduler.add(delay=0, event=None, handler=n2.get_link('n1').down)
-                print "(%s) ----> DISABLED LINKS <----" % Sim.scheduler.current_time()
+        if self.broadcast_count < 200:
+            if self.broadcast_count == 75 and self.node.hostname == 'n1':
+                Sim.scheduler.add(delay=0, event=None, handler=n1.get_link('n4').down)
+                Sim.scheduler.add(delay=0, event=None, handler=n4.get_link('n1').down)
+                print "%s - ----> DISABLED LINKS <----" % Sim.scheduler.current_time()
+            elif self.broadcast_count == 150 and self.node.hostname == 'n1':
+                Sim.scheduler.add(delay=0, event=None, handler=n1.get_link('n4').up)
+                Sim.scheduler.add(delay=0, event=None, handler=n4.get_link('n1').up)
+                print "%s - ----> ENABLED LINKS <----" % Sim.scheduler.current_time()
+
             Sim.scheduler.add(delay=30, event="", handler=self.broadcast_routing_table)
             self.broadcast_count += 1
         else:
+            # print
             print "(%s) --------> ENDING <--------" % Sim.scheduler.current_time()
 
 class NodePrinter(object):
+    def __init__(self, node):
+        self.node = node
+
     def receive_packet(self, packet):
-        print packet
+        print "%s - (%s) Packet ARRIVED - Data: %s; Source_Address: %s; Destination_Address: %s" % (Sim.scheduler.current_time(), self.node.hostname, packet.body, packet.source_address, packet.destination_address)
 
 if __name__ == '__main__':
     # parameters
@@ -169,7 +176,7 @@ if __name__ == '__main__':
     Sim.set_debug(True)
 
     # setup network
-    net = Network('../networks/five-ring-nodes.txt')
+    net = Network('../networks/fifteen-nodes.txt')
 
     # get nodes
     n1 = net.get_node('n1')
@@ -177,16 +184,16 @@ if __name__ == '__main__':
     n3 = net.get_node('n3')
     n4 = net.get_node('n4')
     n5 = net.get_node('n5')
-    # n6 = net.get_node('n6')
-    # n7 = net.get_node('n7')
-    # n8 = net.get_node('n8')
-    # n9 = net.get_node('n9')
-    # n10 = net.get_node('n10')
-    # n11 = net.get_node('n11')
-    # n12 = net.get_node('n12')
-    # n13 = net.get_node('n13')
-    # n14 = net.get_node('n14')
-    # n15 = net.get_node('n15')
+    n6 = net.get_node('n6')
+    n7 = net.get_node('n7')
+    n8 = net.get_node('n8')
+    n9 = net.get_node('n9')
+    n10 = net.get_node('n10')
+    n11 = net.get_node('n11')
+    n12 = net.get_node('n12')
+    n13 = net.get_node('n13')
+    n14 = net.get_node('n14')
+    n15 = net.get_node('n15')
 
     # setup broadcast application
     d1 = DistanceVectorApp(n1)
@@ -199,44 +206,80 @@ if __name__ == '__main__':
     n4.add_protocol(protocol="dvrouting",handler=d4)
     d5 = DistanceVectorApp(n5)
     n5.add_protocol(protocol="dvrouting",handler=d5)
-    # d6 = DistanceVectorApp(n6)
-    # n6.add_protocol(protocol="dvrouting", handler=d6)
-    # d7 = DistanceVectorApp(n7)
-    # n7.add_protocol(protocol="dvrouting", handler=d7)
-    # d8 = DistanceVectorApp(n8)
-    # n8.add_protocol(protocol="dvrouting", handler=d8)
-    # d9 = DistanceVectorApp(n9)
-    # n9.add_protocol(protocol="dvrouting", handler=d9)
-    # d10 = DistanceVectorApp(n10)
-    # n10.add_protocol(protocol="dvrouting", handler=d10)
-    # d11 = DistanceVectorApp(n11)
-    # n11.add_protocol(protocol="dvrouting", handler=d11)
-    # d12 = DistanceVectorApp(n12)
-    # n12.add_protocol(protocol="dvrouting", handler=d12)
-    # d13 = DistanceVectorApp(n13)
-    # n13.add_protocol(protocol="dvrouting", handler=d13)
-    # d14 = DistanceVectorApp(n14)
-    # n14.add_protocol(protocol="dvrouting", handler=d14)
-    # d15 = DistanceVectorApp(n15)
-    # n15.add_protocol(protocol="dvrouting", handler=d15)
+    d6 = DistanceVectorApp(n6)
+    n6.add_protocol(protocol="dvrouting", handler=d6)
+    d7 = DistanceVectorApp(n7)
+    n7.add_protocol(protocol="dvrouting", handler=d7)
+    d8 = DistanceVectorApp(n8)
+    n8.add_protocol(protocol="dvrouting", handler=d8)
+    d9 = DistanceVectorApp(n9)
+    n9.add_protocol(protocol="dvrouting", handler=d9)
+    d10 = DistanceVectorApp(n10)
+    n10.add_protocol(protocol="dvrouting", handler=d10)
+    d11 = DistanceVectorApp(n11)
+    n11.add_protocol(protocol="dvrouting", handler=d11)
+    d12 = DistanceVectorApp(n12)
+    n12.add_protocol(protocol="dvrouting", handler=d12)
+    d13 = DistanceVectorApp(n13)
+    n13.add_protocol(protocol="dvrouting", handler=d13)
+    d14 = DistanceVectorApp(n14)
+    n14.add_protocol(protocol="dvrouting", handler=d14)
+    d15 = DistanceVectorApp(n15)
+    n15.add_protocol(protocol="dvrouting", handler=d15)
+
+    p1 = NodePrinter(n1)
+    n1.add_protocol(protocol="printer", handler=p1)
+    p2 = NodePrinter(n2)
+    n2.add_protocol(protocol="printer", handler=p2)
+    p3 = NodePrinter(n3)
+    n3.add_protocol(protocol="printer", handler=p3)
+    p4 = NodePrinter(n4)
+    n4.add_protocol(protocol="printer", handler=p4)
+    p5 = NodePrinter(n5)
+    n5.add_protocol(protocol="printer", handler=p5)
+    p6 = NodePrinter(n6)
+    n6.add_protocol(protocol="printer", handler=p6)
+    p7 = NodePrinter(n7)
+    n7.add_protocol(protocol="printer", handler=p7)
+    p8 = NodePrinter(n8)
+    n8.add_protocol(protocol="printer", handler=p8)
+    p9 = NodePrinter(n9)
+    n9.add_protocol(protocol="printer", handler=p9)
+    p10 = NodePrinter(n10)
+    n10.add_protocol(protocol="printer", handler=p10)
+    p11 = NodePrinter(n11)
+    n11.add_protocol(protocol="printer", handler=p11)
+    p12 = NodePrinter(n12)
+    n12.add_protocol(protocol="printer", handler=p12)
+    p13 = NodePrinter(n13)
+    n13.add_protocol(protocol="printer", handler=p13)
+    p14 = NodePrinter(n14)
+    n14.add_protocol(protocol="printer", handler=p14)
+    p15 = NodePrinter(n15)
+    n15.add_protocol(protocol="printer", handler=p15)
 
     d1.broadcast_routing_table("")
     d2.broadcast_routing_table("")
     d3.broadcast_routing_table("")
     d4.broadcast_routing_table("")
     d5.broadcast_routing_table("")
-    # d6.broadcast_routing_table("")
-    # d7.broadcast_routing_table("")
-    # d8.broadcast_routing_table("")
-    # d9.broadcast_routing_table("")
-    # d10.broadcast_routing_table("")
-    # d11.broadcast_routing_table("")
-    # d12.broadcast_routing_table("")
-    # d13.broadcast_routing_table("")
-    # d14.broadcast_routing_table("")
-    # d15.broadcast_routing_table("")
+    d6.broadcast_routing_table("")
+    d7.broadcast_routing_table("")
+    d8.broadcast_routing_table("")
+    d9.broadcast_routing_table("")
+    d10.broadcast_routing_table("")
+    d11.broadcast_routing_table("")
+    d12.broadcast_routing_table("")
+    d13.broadcast_routing_table("")
+    d14.broadcast_routing_table("")
+    d15.broadcast_routing_table("")
 
-    p = packet.Packet()
+    p = packet.Packet(protocol="printer", source_address=n11.get_address('n4'), destination_address=n10.get_address('n1'), body="Hello world!")
+    Sim.scheduler.add(delay=900,event=p, handler=n11.send_packet)
+
+    Sim.scheduler.add(delay=2800, event=p, handler=n11.send_packet)
+
+    Sim.scheduler.add(delay=5500, event=p, handler=n11.send_packet)
 
     # run the simulation
     Sim.scheduler.run()

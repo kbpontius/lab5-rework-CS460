@@ -104,6 +104,7 @@ class Node(object):
         else:
             # forward the packet
             self.forward_unicast_packet(packet)
+            print "%s - (%s) Packet Forwarded - Data: %s; Source_Address: %s; Destination_Address: %s" % (Sim.scheduler.current_time(), self.hostname, packet.body, packet.source_address, packet.destination_address)
 
     def forward_unicast_packet(self,packet):
         if packet.destination_address not in self.forwarding_table:
